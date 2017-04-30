@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from scipy.special import gammaln, psi
 
 from pybasicbayes.abstractions import GibbsSampling, MeanField, MeanFieldSVI
@@ -333,7 +334,7 @@ class ContinuousTimeImpulseResponses(GibbsSampling):
     Continuous time impulse response model with logistic normal
     impulse response functions.
     """
-    def __init__(self, model, mu_0=0., lmbda_0=1., alpha_0=1., beta_0=1.):
+    def __init__(self, model, mu_0=0., lmbda_0=1., alpha_0=1., beta_0=1.,delay_0 = 0.0):
         self.model = model
         self.K = model.K
         self.dt_max = model.dt_max
@@ -342,6 +343,7 @@ class ContinuousTimeImpulseResponses(GibbsSampling):
         self.lmbda_0 = lmbda_0
         self.alpha_0 = alpha_0
         self.beta_0 = beta_0
+        self.delay_0 = delay_0
 
         from pyhawkes.utils.utils import sample_nig
         self.mu, self.tau = \
@@ -361,11 +363,12 @@ class ContinuousTimeImpulseResponses(GibbsSampling):
         return t, ir
 
     # TODO: Rename this
-    def impulse(self, dt, k1, k2):
+    def impulse(self, dt, k1, k2, delay = 0):
         """
         Impulse response induced by an event on process k1 on
         the rate of process k2 at lag dt
         """
+        dt = dt + delay
         from pyhawkes.utils.utils import logit
         mu, tau, dt_max = self.mu[k1,k2], self.tau[k1,k2], self.dt_max
         Z = dt * (dt_max - dt)/dt_max * np.sqrt(2*np.pi/tau)
@@ -419,6 +422,67 @@ class ContinuousTimeImpulseResponses(GibbsSampling):
         self.mu, self.tau = \
             sample_nig(mu_post, lmbda_post, alpha_post, beta_post)
 
+
+        # Z is parent
+        # C is process
+        # S is event time
+        S,C,Z,P,IGNORE = [x.S,x.C,s.Z,s.C[s.Z],s.Z==-1 for x in self.model.data_list]
+        for k1 in range(self.K):
+            for k2 in range(self.K):
+                for i in range(len(S)):
+                    s = S[i]
+                    c = C[i]
+                    z = Z[i]
+                    cind = (c==k1)
+                    pind = (c[z]==k2)
+                    inds = cind & pind
+
+
+'''
+        # resample the delay
+        A = self.model.A
+        W = self.model.W
+        # implementation for different event types
+        S = [x.S for x in self.model.data_list]
+        C = [x.C for x in self.model.data_list]
+        N_pts = 50 # same as self.impulse
+        t = np.linspace(0, self.dt_max, N_pts) # same as self.impulse
+        for k1 in range(self.K):
+            for k2 in range(self.K):
+                a = A[k1,k2]
+                w = W[k1,k2]
+                if a == False:
+                    print "no edge"
+                    continue
+                imp_vec = w*self.impulse(t, k1, k2)
+                probt_tau_miu = np.zeros((N_pts,))
+                for i in range(len(C)):
+                    s = S[i]
+                    c = C[i]
+                    c_k1_ind = (c == k1)
+                    c_k2_ind = (c == k2)
+                    s1 = s[c_k1_ind]
+                    s2 = s[c_k2_ind]
+                    for ss1 in s1:
+                        for ss2 in s2:
+                            if ss2 - ss1 > 0 and ss2 - ss1 < self.dt_max:
+                                dd = ss2 - ss1
+                                ddi = math.floor(dd*N_pts/self.dt_max)
+                                for dela = range(ddi+1):
+                                    lam = imp_vec[ddi-dela] + bkgd
+                                    poss_prob = my_poss(lam)
+                                    probt_tau_miu = probt_tau_miu * poss_prob
+                normz = np.sum(probt_tau_miu)
+'''
+
+
+
+
+
+
+
+
+        
         assert np.isfinite(self.mu).all()
         assert np.isfinite(self.tau).all()
 
